@@ -6,7 +6,6 @@ package glivo
 
 import (
 	"net"
-	"fmt"
 	"net/textproto"
 	"bufio"
 	"strings"
@@ -35,7 +34,7 @@ func (session *Session) Start(handler func(call *Call)) {
 		for {
 			select{
 			case <-session.done:
-				logger.Print("Closing server")
+				session.logger.Print("Closing server")
 				return;
 			default:
 			}
@@ -51,11 +50,11 @@ func (session *Session) Start(handler func(call *Call)) {
 	
 			header, err := reader.ReadMIMEHeader()
 			if err != nil {
-				logger.Faltaf("Error reading call info: %s", err.Error())
+				session.logger.Fatalf("Error reading call info: %s", err.Error())
 				continue
 			}
 
-			call := NewCall(&conn, header)
+			call := NewCall(&conn, header, session.logger)
 			calls_active = append(calls_active, call)
 
 			replyCh := make(chan CommandStatus, 100) //si +OK es "" de lo contrario se envia cade
@@ -103,7 +102,7 @@ func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus){
 		notification_body := ""
 		notification,err := reader.ReadMIMEHeader()
 		if err != nil {
-			logger.Println("Failed read: ", err.Error())
+			call.logger.Println("Failed read: ", err.Error())
 			break
 		}
 		if Scontent_length := notification.Get("Content-Length"); Scontent_length != "" {
@@ -111,7 +110,7 @@ func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus){
 			lreader := io.LimitReader(buf, int64(content_length))
 			body, err := ioutil.ReadAll(lreader)
 			if err != nil {
-				logger.Faltaf("Failed read body: %s" ,err.Error())
+				call.logger.Fatalf("Failed read body: %s" ,err.Error())
 				break
 			}else{
 				notification_body = string(body)

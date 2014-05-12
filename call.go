@@ -12,6 +12,7 @@ import (
 	"net/textproto"
 	"strings"
 	"fmt"
+	"log"
 )
 
 
@@ -37,10 +38,11 @@ type Call struct {
 	done chan bool
 
 	handlers map[string]HandlerEvent
+	logger *log.Logger
 }
 
 
-func NewCall(conn *net.Conn, header textproto.MIMEHeader) *Call {
+func NewCall(conn *net.Conn, header textproto.MIMEHeader, logger *log.Logger) *Call {
 
 	call := &Call{
 		Conn: *conn, 
@@ -48,9 +50,10 @@ func NewCall(conn *net.Conn, header textproto.MIMEHeader) *Call {
 		Header: make(map[string]string),
 		Variable: make(map[string]string),
 		Caller: &Channel{"", make(map[string]string)},
-		replyChan: nil, 
+		replyChan: nil,
 		done: make(chan bool), 
 		handlers: make(map[string]HandlerEvent),
+		logger: logger,
 	}
 
 	for k,v := range header {
@@ -120,7 +123,7 @@ func (call *Call) sendMSG(data map[string]string) {
 		msg.WriteString(fmt.Sprintf("%s: %s\n", k, v))
 	}
 	msg.WriteString("\n\n")
-	fmt.Println("SendMSG:", msg.String())
+	call.logger.Println("====BEGIN SendMSG\n", msg.String(), "====END SendMSG\n")
 	call.Write([]byte(msg.String()))
 }
 
