@@ -85,6 +85,7 @@ func (digits *ChainDigits) SetValidDigits(s string){
 	digits.validDigits = s
 }
 
+//Reproduce archivo local al servidor Freeswitch
 func (digits *ChainDigits) Play(file string) *ChainDigits{
 	digits.commands = append(digits.commands, CommandChainable{"play", file})
 	return digits
@@ -167,6 +168,7 @@ func (digits *ChainDigits) Question(question string) (bool, error){
 	)
 
 	digits.call.SetVar("playback_delimiter", "!")
+	digits.call.SetVar("playback_terminators", "none")
 	digits.call.Execute("play_and_get_digits", cmd, true)
 	digits.call.Reply()
 
@@ -245,6 +247,8 @@ func (digits *ChainDigits) CollectInput() (string, error){
 	cldtmf := glivo.NewCollectDTMFEventHandle(block, digits.numDigits, digits.validDigits, '#')
 	digits.call.RegisterEventHandle("collect_input", cldtmf)
 
+	digits.call.SetVar("playback_delimiter", "!")
+	digits.call.SetVar("playback_terminators", "none")
 	digits.call.Execute("play_and_get_digits", cmd, true)
 	digits.call.Reply()
 
@@ -298,6 +302,7 @@ func (digits *ChainDigits) Do() {
 		}
 	}
 	digits.call.SetVar("playback_delimiter", "!")
+	digits.call.SetVar("playback_terminators", "none")
 	digits.call.Execute("playback", sound_file, true)
 	digits.call.Reply()
 }
