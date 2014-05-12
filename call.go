@@ -42,11 +42,15 @@ type Call struct {
 
 func NewCall(conn *net.Conn, header textproto.MIMEHeader) *Call {
 
-	call := &Call{*conn, "", make(map[string]string),
-		make(map[string]string),
-		&Channel{"", make(map[string]string)},
-		nil, make(chan bool), 
-		make(map[string]HandlerEvent),
+	call := &Call{
+		Conn: *conn, 
+		uuid: "", 
+		Header: make(map[string]string),
+		Variable: make(map[string]string),
+		Caller: &Channel{"", make(map[string]string)},
+		replyChan: nil, 
+		done: make(chan bool), 
+		handlers: make(map[string]HandlerEvent),
 	}
 
 	for k,v := range header {
@@ -129,10 +133,9 @@ func (call *Call) Playback(url string) {
 
 //Contesta
 //http://wiki.freeswitch.org/wiki/Misc._Dialplan_Tools_answer
-func (call *Call) Answer() error {
+func (call *Call) Answer() {
 	call.Execute("answer","", true)
 	call.Reply()
-	return nil
 }
 
 //Cuelga la llamada

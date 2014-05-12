@@ -45,7 +45,7 @@ func (session *Session) Start(handler func(call *Call)) {
 			}
 
 			conn.Write([]byte("connect\n\n"))
-			buf := bufio.NewReaderSize(conn, 4048)
+			buf := bufio.NewReaderSize(conn, 4096)
 			reader := textproto.NewReader(buf)
 	
 			header, err := reader.ReadMIMEHeader()

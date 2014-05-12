@@ -29,16 +29,18 @@ type ChainDigits struct {
 }
 
 func NewChainDigits(call *Call) *ChainDigits{
-	return &ChainDigits{call, 
-		5,2,
-		'#',
-		99,
-		1,
-		false,
-		"123456789*#",
-		"silence_stream://250",
-		make([]CommandChainable, 50),
-		make(chan Event),
+	return &ChainDigits{
+		call: call, 
+		timout: 5,
+		digitTimeout: 2,
+		finishOnKey:'#',
+		numDigits: 99,
+		retries: 1,
+		playBeep: false,
+		validDigits: "123456789*#",
+		invalidDigitsSound: "silence_stream://250",
+		commands: make([]CommandChainable, 50),
+		result: make(chan Event),
 		
 	}
 }

@@ -7,8 +7,7 @@ import (
 )
 
 //Representa un evento de Freeswitch
-//Las claves estan Camelised, aun no se porque
-//creo que debe ser el lector de textproto
+//Las claves estan Camelised
 type Event struct {
 	call *Call
 	Content map[string]string
@@ -18,7 +17,7 @@ type Event struct {
 //o bien cuando el evento cumpla las condiciones esperadas.
 type HandlerEvent interface {
 	//Delimita el handler a que eventos trabajar
-	//retorna +true+ si es evento esperadon
+	//retorna +true+ si es evento esperado
 	Filter(Event) bool
 
 	//Recibe evento y reacciona a este
