@@ -13,18 +13,19 @@ import (
 	"io"
 	"io/ioutil"
 	"strconv"
-
+	"log"
 )
 
 //Una session representa un puerto escuchando peticiones de freeswitch
 type Session struct {
 	listener *net.Listener
 	done chan bool
+	logger *log.Logger
 }
 
 
-func NewSession(srv *net.Listener) *Session {
-	return &Session{srv,  make(chan bool)}
+func NewSession(srv *net.Listener, logger *log.Logger) *Session {
+	return &Session{srv,  make(chan bool), logger}
 }
 
 func (session *Session) Start(handler func(call *Call)) {
@@ -34,7 +35,7 @@ func (session *Session) Start(handler func(call *Call)) {
 		for {
 			select{
 			case <-session.done:
-				fmt.Println("Closing server")
+				logger.Print("Closing server")
 				return;
 			default:
 			}
@@ -50,7 +51,7 @@ func (session *Session) Start(handler func(call *Call)) {
 	
 			header, err := reader.ReadMIMEHeader()
 			if err != nil {
-				fmt.Println("Error reading call info: %s", err.Error())
+				logger.Faltaf("Error reading call info: %s", err.Error())
 				continue
 			}
 
@@ -102,7 +103,7 @@ func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus){
 		notification_body := ""
 		notification,err := reader.ReadMIMEHeader()
 		if err != nil {
-			fmt.Println("Failed read: ", err.Error())
+			logger.Println("Failed read: ", err.Error())
 			break
 		}
 		if Scontent_length := notification.Get("Content-Length"); Scontent_length != "" {
@@ -110,15 +111,14 @@ func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus){
 			lreader := io.LimitReader(buf, int64(content_length))
 			body, err := ioutil.ReadAll(lreader)
 			if err != nil {
-				fmt.Println("Failed read body:" ,err.Error())
+				logger.Faltaf("Failed read body: %s" ,err.Error())
 				break
 			}else{
 				notification_body = string(body)
 			}
 			
 		}
-		fmt.Println(notification)
-		//fmt.Println(notification_body)
+
 
 		switch notification.Get("Content-Type") {
 		case "command/reply":
@@ -137,12 +137,12 @@ func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus){
 }
 
 //Crea el servidor en la interfaz y puerto seleccionado
-func NewFS(laddr string, lport string) (* Session, error) {
-	srv, err := net.Listen("tcp", laddr + ":" + lport)
+func NewFS(laddr string, logger *log.Logger ) (* Session, error) {
+	srv, err := net.Listen("tcp", laddr)
 	if err != nil {
 		return nil, err
 	}
-	return NewSession(&srv), nil
+	return NewSession(&srv, logger), nil
 }
 
 
