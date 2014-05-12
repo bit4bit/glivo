@@ -1,8 +1,9 @@
-package glivo
+package chain
 
 import (
 	"fmt"
 	"strconv"
+	"github.com/bit4bit/glivo"
 //	"os"
 )
 
@@ -13,7 +14,7 @@ import (
 //chain.SetTimeout(10)
 //chain.Play("mi audio").Play("Then other.wav").Reply() //get response
 type ChainDigits struct {
-	call *Call
+	call *glivo.Call
 	timeout uint16
 	digitTimeout uint16
 	finishOnKey uint8
@@ -25,13 +26,13 @@ type ChainDigits struct {
 
 
 	commands []CommandChainable
-	result chan Event
+	result chan glivo.Event
 }
 
-func NewChainDigits(call *Call) *ChainDigits{
+func NewChainDigits(call *glivo.Call) *ChainDigits{
 	return &ChainDigits{
 		call: call, 
-		timout: 5,
+		timeout: 5,
 		digitTimeout: 2,
 		finishOnKey:'#',
 		numDigits: 99,
@@ -40,7 +41,7 @@ func NewChainDigits(call *Call) *ChainDigits{
 		validDigits: "123456789*#",
 		invalidDigitsSound: "silence_stream://250",
 		commands: make([]CommandChainable, 50),
-		result: make(chan Event),
+		result: make(chan glivo.Event),
 		
 	}
 }
@@ -103,6 +104,10 @@ func (digits *ChainDigits) Wait(seconds int) *ChainDigits{
 //Espera que se responda con los digitos indicados
 //y retorna si o no
 func (digits *ChainDigits) Question(question string) (bool, error){
+	defer func(){
+		digits.commands = nil
+	}()
+
 	separator := "!"
 
 	outputs := make([]string, 200)
@@ -153,9 +158,9 @@ func (digits *ChainDigits) Question(question string) (bool, error){
 		digits.digitTimeout * 1000,
 	)
 
-	block := make(chan Event)
+	block := make(chan glivo.Event)
 	digits.call.RegisterEventHandle("getdigits_app",
-		NewWaitEventHandle(block, map[string]string{
+		glivo.NewWaitEventHandle(block, map[string]string{
 			"Variable_read_result" : "success",
 			"Application" : "play_and_get_digits",
 		}),
@@ -176,6 +181,10 @@ func (digits *ChainDigits) Question(question string) (bool, error){
 //Espera digitos, y colecion al final retonar
 //toda la secuencia digitada
 func (digits *ChainDigits) CollectInput() (string, error){
+	defer func(){
+		digits.commands = nil
+	}()
+
 	separator := "!"
 
 	outputs := make([]string, 200)
@@ -233,7 +242,7 @@ func (digits *ChainDigits) CollectInput() (string, error){
 	)
 
 	block := make(chan string)
-	cldtmf := NewCollectDTMFEventHandle(block, digits.numDigits, digits.validDigits, '#')
+	cldtmf := glivo.NewCollectDTMFEventHandle(block, digits.numDigits, digits.validDigits, '#')
 	digits.call.RegisterEventHandle("collect_input", cldtmf)
 
 	digits.call.Execute("play_and_get_digits", cmd, true)
@@ -252,6 +261,10 @@ func (digits *ChainDigits) CollectInput() (string, error){
 //Espera digitos, y colecion al final retonar
 //toda la secuencia digitada
 func (digits *ChainDigits) Do() {
+	defer func(){
+		digits.commands = nil
+	}()
+
 	separator := "!"
 
 	outputs := make([]string, 200)

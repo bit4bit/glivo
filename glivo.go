@@ -90,15 +90,6 @@ func (session *Session) Stop() bool {
 }
 
 
-type CommandChainable struct {
-	app string
-	args string
-}
-
-type RunnerChainable interface{
-	Reply() (string, error)
-}
-
 type CommandStatus string
 
 

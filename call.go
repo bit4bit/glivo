@@ -104,7 +104,7 @@ func (call *Call) Execute(app string, arg string, lock bool) {
 func (call *Call) SetVar(name string, value string){
 
 	msg := map[string]string{
-		"call-command" : "set",
+		"call-command" : "export",
 		"execute-app-name" : fmt.Sprintf("%s=%s", name, value),
 		"event-lock" : "true",
 
