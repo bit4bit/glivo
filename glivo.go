@@ -27,7 +27,7 @@ func NewSession(srv *net.Listener, logger *log.Logger) *Session {
 	return &Session{srv,  make(chan bool), logger}
 }
 
-func (session *Session) Start(handler func(call *Call)) {
+func (session *Session) Start(handler func(call *Call, userData interface{}), userData interface{}) {
 
 	go func(session *Session){
 		calls_active := make([]*Call, 100, 254)
