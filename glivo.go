@@ -2,6 +2,9 @@
 //La idea inicial, es hacer un clon de plivoframework sencillo
 //pero la diferencia es que recibe todo el mensaje o IVR
 //y lo ejecuta
+//
+//BUG() Para terminar el servidor se corta la conexion lo mismo que para los clientes, y es debido al 
+//bloqueo de E/S, como implementar un non-I/O Bloque
 package glivo
 
 import (
@@ -13,32 +16,27 @@ import (
 	"io/ioutil"
 	"strconv"
 	"log"
+	"sync"
 )
 
 //Una session representa un puerto escuchando peticiones de freeswitch
 type Session struct {
 	listener *net.Listener
-	done chan bool
 	logger *log.Logger
+	waitCalls sync.WaitGroup
 }
 
 
 func NewSession(srv *net.Listener, logger *log.Logger) *Session {
-	return &Session{srv,  make(chan bool), logger}
+	return &Session{listener: srv, logger: logger}
 }
 
 func (session *Session) Start(handler func(call *Call, userData interface{}), userData interface{}) {
+	defer session.waitCalls.Wait()
 
 	go func(session *Session){
-		calls_active := make([]*Call, 100, 254)
-		for {
-			select{
-			case <-session.done:
-				session.logger.Print("Closing server")
-				return;
-			default:
-			}
 
+		for {
 			conn, err := (*session.listener).Accept()
 			if err != nil {
 				continue
@@ -50,17 +48,17 @@ func (session *Session) Start(handler func(call *Call, userData interface{}), us
 	
 			header, err := reader.ReadMIMEHeader()
 			if err != nil {
-				session.logger.Fatalf("Error reading call info: %s", err.Error())
+				session.logger.Printf("Error reading Call Start info: %s", err.Error())
 				continue
 			}
 
 			call := NewCall(&conn, header, session.logger)
-			calls_active = append(calls_active, call)
+
 
 			replyCh := make(chan CommandStatus, 100) //si +OK es "" de lo contrario se envia cade
 			call.SetReply(&replyCh)
-
-			go HandleCall(call, buf, replyCh)
+			session.waitCalls.Add(1)
+			go HandleCall(call, buf, replyCh, &session.waitCalls)
 			//preludio
 			call.Write([]byte("linger\n\n"))
 			call.Reply()
@@ -68,36 +66,31 @@ func (session *Session) Start(handler func(call *Call, userData interface{}), us
 			call.Reply()
 
 			go handler(call, userData)
+
 		}
 		
-		//esperamos que terminen todas las llamadas activas
-		//antes de cerrar
-		for _,call_active := range calls_active {
-			if call_active != nil {
-				<- call_active.done
-			}
-		}
-		session.done <- true
 	}(session)
 
 }
 
 //Termina el servidor y bloquea hasta
 //que se terminen todas las llamadas
-func (session *Session) Stop() bool {
-	session.done <- true
-	return <- session.done
+func (session *Session) Stop() {
+	session.waitCalls.Wait()
+	(*session.listener).Close()
 }
-
 
 type CommandStatus string
 
 
 
-func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus){
+func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus, waitCall *sync.WaitGroup){
+	defer waitCall.Done()
 	defer call.Conn.Close()
 
+
 	reader := textproto.NewReader(buf)
+
 	for {
 		notification_body := ""
 		notification,err := reader.ReadMIMEHeader()
@@ -110,7 +103,7 @@ func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus){
 			lreader := io.LimitReader(buf, int64(content_length))
 			body, err := ioutil.ReadAll(lreader)
 			if err != nil {
-				call.logger.Fatalf("Failed read body: %s" ,err.Error())
+				call.logger.Printf("Failed read body closing: %s" ,err.Error())
 				break
 			}else{
 				notification_body = string(body)
@@ -133,6 +126,8 @@ func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus){
 			eventDispatch(call, EventFromMIME(call, mime_body))
 		}
 	}
+
+
 }
 
 //Crea el servidor en la interfaz y puerto seleccionado

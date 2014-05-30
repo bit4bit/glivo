@@ -35,7 +35,6 @@ type Call struct {
 
 	Caller *Channel
 	replyChan *chan CommandStatus
-	done chan bool
 
 	handlers map[string]HandlerEvent
 	logger *log.Logger
@@ -51,7 +50,6 @@ func NewCall(conn *net.Conn, header textproto.MIMEHeader, logger *log.Logger) *C
 		Variable: make(map[string]string),
 		Caller: &Channel{"", make(map[string]string)},
 		replyChan: nil,
-		done: make(chan bool), 
 		handlers: make(map[string]HandlerEvent),
 		logger: logger,
 	}
@@ -71,6 +69,7 @@ func NewCall(conn *net.Conn, header textproto.MIMEHeader, logger *log.Logger) *C
 		}
 	}
 	call.uuid = header.Get("Unique-ID")
+
 	return call
 }
 
@@ -153,7 +152,7 @@ func (call *Call) Hangup() {
 
 //Cierra llamada debe ser llamada siempre
 func (call *Call) Close(){
-	call.done <- true
+	call.Conn.Close()
 }
 
 //Registra observador a un evento
