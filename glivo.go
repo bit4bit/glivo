@@ -67,7 +67,7 @@ func (session *Session) Start(handler func(call *Call, userData interface{}), us
 			call.Write([]byte("myevents\n\n"))
 			call.Reply()
 
-			go handler(call)
+			go handler(call, userData)
 		}
 		
 		//esperamos que terminen todas las llamadas activas
