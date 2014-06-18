@@ -1,3 +1,13 @@
+//
+//Application:bridge
+//EventName:CHANNEL_HANGUP
+//EventName:CHANNEL_EXECUTE_COMPLETE
+//Application:bridge
+//Variable_bridge_hangup_cause:NORMAL_CLEARING
+//Variable_dialstatus:DONTCALL
+//Channel-Call-State:HELD
+//Variable_originate_disposition:CALL_REJECTED
+//Hangup-Cause:CALL_REJECTED
 package glivo
 
 import (
@@ -70,6 +80,34 @@ func (we WaitEventHandle) Filter(ev Event) bool {
 }
 
 func (we WaitEventHandle) Handle(ev Event) {
+	we.wait <- ev
+}
+
+
+//Este permite esperar un evento determinado
+//y bloquear la gorutina atraves del chan *wait*
+//@todo como manejar un timeout por demora??
+type WaitAnyEventHandle struct {
+	wait chan Event
+	filter []map[string]string
+}
+
+func NewWaitAnyEventHandle(wait chan Event, filter []map[string]string) WaitAnyEventHandle {
+	return WaitAnyEventHandle{wait, filter}
+}
+
+func (we WaitAnyEventHandle) Filter(ev Event) bool {
+	for _, filter := range we.filter {
+		for fk,fv := range filter {
+			if ev.Content[fk] == fv {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (we WaitAnyEventHandle) Handle(ev Event) {
 	we.wait <- ev
 }
 
