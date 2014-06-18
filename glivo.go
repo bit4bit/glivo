@@ -35,8 +35,9 @@ func (session *Session) Start(handler func(call *Call, userData interface{}), us
 	defer session.waitCalls.Wait()
 
 	go func(session *Session){
-
+		
 		for {
+
 			conn, err := (*session.listener).Accept()
 			if err != nil {
 				continue
@@ -68,8 +69,9 @@ func (session *Session) Start(handler func(call *Call, userData interface{}), us
 			go handler(call, userData)
 
 		}
-		
+
 	}(session)
+	
 
 }
 
@@ -123,7 +125,8 @@ func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus, waitC
 			buf := bufio.NewReader(strings.NewReader(notification_body))
 			reader := textproto.NewReader(buf)
 			mime_body, _ := reader.ReadMIMEHeader()
-			eventDispatch(call, EventFromMIME(call, mime_body))
+			event := EventFromMIME(call, mime_body)
+			eventDispatch(call, event)
 		}
 	}
 
