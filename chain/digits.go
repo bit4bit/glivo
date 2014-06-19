@@ -159,7 +159,7 @@ func (digits *ChainDigits) Question(question string) (bool, error){
 		digits.digitTimeout * 1000,
 	)
 
-	block := make(chan glivo.Event)
+	block := make(chan interface{})
 	digits.call.RegisterEventHandle("getdigits_app",
 		glivo.NewWaitEventHandle(block, map[string]string{
 			"Variable_read_result" : "success",
@@ -174,7 +174,7 @@ func (digits *ChainDigits) Question(question string) (bool, error){
 
 	digits.commands = nil
 
-	ev := <-block
+	ev := (<-block).(glivo.Event)
 	digits.call.UnregisterEventHandle("getdigits_app")
 	return ev.Content["Variable_pagd_input"] == question, nil
 }
