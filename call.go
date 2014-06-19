@@ -37,6 +37,9 @@ type Call struct {
 	replyChan *chan CommandStatus
 
 	handlers map[string]HandlerEvent
+	//Al registrar se elimina despues de
+	//de haber encontrado el evento esperado
+	handlerOnce map[string]HandlerEvent
 	logger *log.Logger
 }
 
@@ -51,6 +54,7 @@ func NewCall(conn *net.Conn, header textproto.MIMEHeader, logger *log.Logger) *C
 		Caller: &Channel{"", make(map[string]string)},
 		replyChan: nil,
 		handlers: make(map[string]HandlerEvent),
+		handlerOnce: make(map[string]HandlerEvent),
 		logger: logger,
 	}
 
@@ -162,4 +166,28 @@ func (call *Call) RegisterEventHandle(uuid string, hl HandlerEvent) {
 
 func (call *Call) UnregisterEventHandle(uuid string) {
 	delete(call.handlers, uuid)
+}
+
+func (call *Call) AddActionHandle(uuid string, hl HandlerEvent) {
+	call.handlerOnce[uuid] = hl
+}
+
+func (call *Call) DoneActionHandle(uuid string) {
+	delete(call.handlerOnce, uuid)
+}
+
+//Se un evento determinado
+func (call *Call) WaitExecute(action string, filter map[string]string) chan interface{} {
+
+	wait := make(chan interface{})
+	waitEvent := NewWaitEventHandle(wait, filter)
+	call.AddActionHandle(action, waitEvent)
+	return wait
+}
+
+//Espera un evento y se ejecuta el handler una sola vez
+func (call *Call) OnceEventHandle(action string, hl func(chan interface{})HandlerEvent) chan interface{} {
+	res := make(chan interface{})
+	call.AddActionHandle(action, hl(res))
+	return res
 }

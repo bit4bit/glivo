@@ -35,6 +35,7 @@ type HandlerEvent interface {
 
 }
 
+
 //Crea evento apartir de el MIME leido 
 func EventFromMIME(call *Call, mime textproto.MIMEHeader) Event{
 	return Event{ call, mimeToMap(mime)}
@@ -54,19 +55,35 @@ func eventDispatch(call *Call, event Event) {
 			go handler.Handle(event)
 		}
 	}
+
+
+	for k, handler := range call.handlerOnce {
+		if handler == nil {
+			continue
+		}
+
+		if handler.Filter(event) {
+			go func(uuid string){
+				handler.Handle(event)
+				call.DoneActionHandle(uuid)
+			}(k)
+		}
+	}
+
 	
 }
+
 
 
 //Este permite esperar un evento determinado
 //y bloquear la gorutina atraves del chan *wait*
 //@todo como manejar un timeout por demora??
 type WaitEventHandle struct {
-	wait chan Event
+	wait chan interface{}
 	filter map[string]string
 }
 
-func NewWaitEventHandle(wait chan Event, filter map[string]string) WaitEventHandle {
+func NewWaitEventHandle(wait chan interface{}, filter map[string]string) WaitEventHandle {
 	return WaitEventHandle{wait, filter}
 }
 
@@ -88,11 +105,11 @@ func (we WaitEventHandle) Handle(ev Event) {
 //y bloquear la gorutina atraves del chan *wait*
 //@todo como manejar un timeout por demora??
 type WaitAnyEventHandle struct {
-	wait chan Event
+	wait chan interface{}
 	filter []map[string]string
 }
 
-func NewWaitAnyEventHandle(wait chan Event, filter []map[string]string) WaitAnyEventHandle {
+func NewWaitAnyEventHandle(wait chan interface{}, filter []map[string]string) WaitAnyEventHandle {
 	return WaitAnyEventHandle{wait, filter}
 }
 
