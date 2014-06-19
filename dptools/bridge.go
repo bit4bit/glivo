@@ -14,7 +14,7 @@ func (dptools *DPTools) Bridge(endpoint string) (aleg *glivo.Event, bleg *glivo.
 
 	
 	wait_bridge := dptools.call.WaitExecute("bridge", map[string]string{
-		"Event-Name": "CHANNEL_EXECUTE_COMPLETE",
+		"Event-Name": "CHANNEL_EXECUTE",
 		"Application": "bridge",
 	})
 	dptools.call.Execute("bridge", send.String(), true)
@@ -26,6 +26,7 @@ func (dptools *DPTools) Bridge(endpoint string) (aleg *glivo.Event, bleg *glivo.
 			[]map[string]string{
 				{"Event-Name": "CHANNEL_UNBRIDGE"},
 				{"Event-Name": "CHANNEL_HANGUP"},
+				{"Event-Name": "CHANNEL_EXECUTE_COMPLETE"},
 			})
 	})
 
@@ -42,6 +43,8 @@ func (dptools *DPTools) Bridge(endpoint string) (aleg *glivo.Event, bleg *glivo.
 		//hangup trying bridge
 		//hangup ALeg
 	case "CHANNEL_HANGUP":
+		aleg = &action
+	case "CHANNEL_EXECUTE_COMPLETE":
 		aleg = &action
 	}
 	
