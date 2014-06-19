@@ -6,7 +6,7 @@ import (
 )
 
 //Execute Bridge and returns the events hangup for the ALeg and BLeg of the call
-func (dptools *DPTools) Bridge(endpoint string) (aleg *glivo.Event, bleg *glivo.Event) {
+func (dptools *DPTools) Bridge(endpoint string) *glivo.Event {
 	var send bytes.Buffer
 
 	send.WriteString(endpoint)
@@ -24,29 +24,23 @@ func (dptools *DPTools) Bridge(endpoint string) (aleg *glivo.Event, bleg *glivo.
 	wait_action := dptools.call.OnceEventHandle("bridge_action", func(res chan interface{}) glivo.HandlerEvent {
 		return glivo.NewWaitAnyEventHandle(res,
 			[]map[string]string{
-				{"Event-Name": "CHANNEL_UNBRIDGE"},
-				{"Event-Name": "CHANNEL_HANGUP"},
-				{"Event-Name": "CHANNEL_EXECUTE_COMPLETE"},
+				{"Event-Name": "CHANNEL_UNBRIDGE", "Application": "bridge" },
+				{"Event-Name": "CHANNEL_HANGUP", "Application": "bridge" },
+				{"Event-Name": "CHANNEL_EXECUTE_COMPLETE", "Application": "bridge" },
 			})
 	})
 
 	action := (<-wait_action).(glivo.Event)
 
-
 	switch action.Content["Event-Name"] {
 		//hangup BLeg
 	case "CHANNEL_UNBRIDGE":
-		bleg = &action
-		//wait hangup ALeg
-		action_aleg := (<-wait_bridge).(glivo.Event)
-		aleg = &action_aleg
-		//hangup trying bridge
-		//hangup ALeg
+		return &action
 	case "CHANNEL_HANGUP":
-		aleg = &action
+		return &action
 	case "CHANNEL_EXECUTE_COMPLETE":
-		aleg = &action
+		return &action
 	}
 	
-	return aleg, bleg
+	return nil
 }
