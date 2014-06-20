@@ -13,6 +13,7 @@ import (
 	"strings"
 	"fmt"
 	"log"
+	"sync"
 )
 
 
@@ -40,9 +41,19 @@ type Call struct {
 	//Al registrar se elimina despues de
 	//de haber encontrado el evento esperado
 	handlerOnce map[string]HandlerEvent
+	muxHandlerOnce *sync.Mutex
+	
+	//Se encolan los eventos
+	//para ser procesados por *eventDispatch*
+	queueEvents chan Event
+
 	logger *log.Logger
 }
 
+//Cantidad maxima antes de bloquear la gorutina
+//aqui espero que no se retarde tanto para llenar
+//la QUEUE
+const CALL_MAX_QUEUE_EVENTS = 77
 
 func NewCall(conn *net.Conn, header textproto.MIMEHeader, logger *log.Logger) *Call {
 
@@ -55,6 +66,8 @@ func NewCall(conn *net.Conn, header textproto.MIMEHeader, logger *log.Logger) *C
 		replyChan: nil,
 		handlers: make(map[string]HandlerEvent),
 		handlerOnce: make(map[string]HandlerEvent),
+		muxHandlerOnce: &sync.Mutex{},
+		queueEvents: make(chan Event, CALL_MAX_QUEUE_EVENTS),
 		logger: logger,
 	}
 
@@ -169,10 +182,14 @@ func (call *Call) UnregisterEventHandle(uuid string) {
 }
 
 func (call *Call) AddActionHandle(uuid string, hl HandlerEvent) {
+	call.muxHandlerOnce.Lock()
+	defer call.muxHandlerOnce.Unlock()
 	call.handlerOnce[uuid] = hl
 }
 
 func (call *Call) DoneActionHandle(uuid string) {
+	call.muxHandlerOnce.Lock()
+	defer call.muxHandlerOnce.Unlock()
 	delete(call.handlerOnce, uuid)
 }
 

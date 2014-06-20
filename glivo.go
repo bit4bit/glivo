@@ -60,6 +60,8 @@ func (session *Session) Start(handler func(call *Call, userData interface{}), us
 			call.SetReply(&replyCh)
 			session.waitCalls.Add(1)
 			go HandleCall(call, buf, replyCh, &session.waitCalls)
+			go DispatcherEvents(call)
+
 			//preludio
 			call.Write([]byte("linger\n\n"))
 			call.Reply()
@@ -85,11 +87,16 @@ func (session *Session) Stop() {
 type CommandStatus string
 
 
+func DispatcherEvents(call *Call) {
+	for ev := range call.queueEvents {
+		eventDispatch(call, ev)
+	}
+}
 
 func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus, waitCall *sync.WaitGroup){
-	defer waitCall.Done()
 	defer call.Conn.Close()
-
+	defer func(){ close(call.queueEvents) }()
+	defer waitCall.Done()
 
 	reader := textproto.NewReader(buf)
 
@@ -126,7 +133,7 @@ func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus, waitC
 			reader := textproto.NewReader(buf)
 			mime_body, _ := reader.ReadMIMEHeader()
 			event := EventFromMIME(call, mime_body)
-			eventDispatch(call, event)
+			call.queueEvents <- event
 		}
 	}
 
