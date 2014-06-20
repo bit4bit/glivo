@@ -56,17 +56,13 @@ func eventDispatch(call *Call, event Event) {
 		}
 	}
 
-
 	for k, handler := range call.handlerOnce {
 		if handler == nil {
 			continue
 		}
-
 		if handler.Filter(event) {
-			go func(uuid string){
-				handler.Handle(event)
-				call.DoneActionHandle(uuid)
-			}(k)
+			handler.Handle(event)
+			call.DoneActionHandle(k)
 		}
 	}
 
@@ -114,14 +110,18 @@ func NewWaitAnyEventHandle(wait chan interface{}, filter []map[string]string) Wa
 }
 
 func (we WaitAnyEventHandle) Filter(ev Event) bool {
+	valid_and := true
 	for _, filter := range we.filter {
+		valid_and = true
 		for fk,fv := range filter {
-			if v, ok := ev.Content[fk]; ok && v != fv {
-				return false
+			if  ev.Content[fk] != fv {
+				valid_and = false
+				break
 			}
 		}
+		if valid_and { break }
 	}
-	return true
+	return valid_and
 }
 
 func (we WaitAnyEventHandle) Handle(ev Event) {
