@@ -17,8 +17,6 @@ func (dptools *DPTools) Bridge(endpoint string) *glivo.Event {
 		"Event-Name": "CHANNEL_EXECUTE",
 		"Application": "bridge",
 	})
-	dptools.call.Execute("bridge", send.String(), true)
-	<-wait_bridge
 
 
 	wait_action := dptools.call.OnceEventHandle("bridge_action", func(res chan interface{}) glivo.HandlerEvent {
@@ -29,6 +27,9 @@ func (dptools *DPTools) Bridge(endpoint string) *glivo.Event {
 				{"Event-Name": "CHANNEL_EXECUTE_COMPLETE", "Application": "bridge" },
 			})
 	})
+
+	dptools.call.Execute("bridge", send.String(), true)
+	<-wait_bridge
 
 	action := (<-wait_action).(glivo.Event)
 
