@@ -116,12 +116,12 @@ func NewWaitAnyEventHandle(wait chan interface{}, filter []map[string]string) Wa
 func (we WaitAnyEventHandle) Filter(ev Event) bool {
 	for _, filter := range we.filter {
 		for fk,fv := range filter {
-			if ev.Content[fk] == fv {
-				return true
+			if v, ok := ev.Content[fk]; ok && v != fv {
+				return false
 			}
 		}
 	}
-	return false
+	return true
 }
 
 func (we WaitAnyEventHandle) Handle(ev Event) {
