@@ -12,36 +12,24 @@ func (dptools *DPTools) Bridge(endpoint string) *glivo.Event {
 	send.WriteString(endpoint)
 
 
-	
-	wait_bridge := dptools.call.WaitExecute("bridge", map[string]string{
-		"Event-Name": "CHANNEL_EXECUTE",
-		"Application": "bridge",
-	})
-
-
 	wait_action := dptools.call.OnceEventHandle("bridge_action", func(res chan interface{}) glivo.HandlerEvent {
 		return glivo.NewWaitAnyEventHandle(res,
 			[]map[string]string{
 				{"Event-Name": "CHANNEL_UNBRIDGE"},
 				{"Event-Name": "CHANNEL_HANGUP"},
-				{"Event-Name": "CHANNEL_EXECUTE_COMPLETE", "Application": "bridge" },
 			})
 	})
 
+        wait_complete := dptools.call.WaitExecute("bridge", map[string]string{
+                "Event-Name": "CHANNEL_EXECUTE_COMPLETE",
+                "Application": "bridge",
+        })
+
 	dptools.call.Execute("bridge", send.String(), true)
-	<-wait_bridge
 
 	action := (<-wait_action).(glivo.Event)
 
-	switch action.Content["Event-Name"] {
-		//hangup BLeg
-	case "CHANNEL_UNBRIDGE":
-		return &action
-	case "CHANNEL_HANGUP":
-		return &action
-	case "CHANNEL_EXECUTE_COMPLETE":
-		return &action
-	}
-	panic("NOT DETECT BRIDGE END WHY?")
-	return nil
+	<-wait_complete
+
+	return &action
 }
