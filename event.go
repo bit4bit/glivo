@@ -155,6 +155,11 @@ func (cl CollectDTMFEventHandle) Filter(ev Event) bool {
 		return true
 	}
 
+	if ev.Content["Event-Name"] == "CHANNEL_EXECUTE_COMPLETE" && ev.Content["Variable_current_application"] == "play_and_get_digits" {
+		cl.wait <- *cl.collection
+		*cl.collection = ""
+	}
+
 	return false
 }
 
