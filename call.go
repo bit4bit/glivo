@@ -193,6 +193,12 @@ func (call *Call) DoneActionHandle(uuid string) {
 	delete(call.handlerOnce, uuid)
 }
 
+//Bloquea gorutina esperando evento CHANNEL_ANSWER
+//retorna el glivo.Event
+func (call *Call) WaitAnswer() interface{} {
+	return <-call.WaitExecute("wait_answer", map[string]string{"Event-Name":"CHANNEL_ANSWER"})
+}
+
 //Se un evento determinado
 func (call *Call) WaitExecute(action string, filter map[string]string) chan interface{} {
 
@@ -208,3 +214,4 @@ func (call *Call) OnceEventHandle(action string, hl func(chan interface{})Handle
 	call.AddActionHandle(action, hl(res))
 	return res
 }
+
