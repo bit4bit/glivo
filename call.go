@@ -7,18 +7,17 @@ package glivo
 
 import (
 	"bytes"
-	"net"
-	"net/url"
-	"net/textproto"
-	"strings"
 	"fmt"
 	"log"
+	"net"
+	"net/textproto"
+	"net/url"
+	"strings"
 	"sync"
 )
 
-
 type Channel struct {
-	uuid string
+	uuid   string
 	Header map[string]string
 }
 
@@ -26,23 +25,22 @@ type Channel struct {
 func (session *Channel) Close() {
 }
 
-
 //La llamada que se controla actualmente
 type Call struct {
-	Conn net.Conn
-	uuid string
-	Header map[string]string
+	Conn     net.Conn
+	uuid     string
+	Header   map[string]string
 	Variable map[string]string
 
-	Caller *Channel
+	Caller    *Channel
 	replyChan *chan CommandStatus
 
 	handlers map[string]HandlerEvent
 	//Al registrar se elimina despues de
 	//de haber encontrado el evento esperado
-	handlerOnce map[string]HandlerEvent
+	handlerOnce    map[string]HandlerEvent
 	muxHandlerOnce *sync.Mutex
-	
+
 	//Se encolan los eventos
 	//para ser procesados por *eventDispatch*
 	queueEvents chan Event
@@ -58,20 +56,20 @@ const CALL_MAX_QUEUE_EVENTS = 77
 func NewCall(conn *net.Conn, header textproto.MIMEHeader, logger *log.Logger) *Call {
 
 	call := &Call{
-		Conn: *conn, 
-		uuid: "", 
-		Header: make(map[string]string),
-		Variable: make(map[string]string),
-		Caller: &Channel{"", make(map[string]string)},
-		replyChan: nil,
-		handlers: make(map[string]HandlerEvent),
-		handlerOnce: make(map[string]HandlerEvent),
+		Conn:           *conn,
+		uuid:           "",
+		Header:         make(map[string]string),
+		Variable:       make(map[string]string),
+		Caller:         &Channel{"", make(map[string]string)},
+		replyChan:      nil,
+		handlers:       make(map[string]HandlerEvent),
+		handlerOnce:    make(map[string]HandlerEvent),
 		muxHandlerOnce: &sync.Mutex{},
-		queueEvents: make(chan Event, CALL_MAX_QUEUE_EVENTS),
-		logger: logger,
+		queueEvents:    make(chan Event, CALL_MAX_QUEUE_EVENTS),
+		logger:         logger,
 	}
 
-	for k,v := range header {
+	for k, v := range header {
 		val, err := url.QueryUnescape(v[0])
 		if err != nil {
 			val = v[0]
@@ -79,9 +77,9 @@ func NewCall(conn *net.Conn, header textproto.MIMEHeader, logger *log.Logger) *C
 
 		if strings.HasPrefix("Caller-", k) {
 			call.Caller.Header[strings.TrimPrefix(k, "Caller-")] = val
-		}else if strings.HasPrefix("variable_", k) {
+		} else if strings.HasPrefix("variable_", k) {
 			call.Variable[strings.TrimPrefix(k, "variable_")] = val
-		}else{
+		} else {
 			call.Header[k] = val
 		}
 	}
@@ -96,7 +94,7 @@ func (call *Call) SetReply(rc *chan CommandStatus) {
 
 //Espera el reply del comando ejecutado
 func (call *Call) Reply() CommandStatus {
-	return <- *call.replyChan
+	return <-*call.replyChan
 }
 
 //Envia al socket
@@ -110,32 +108,30 @@ func (call *Call) Execute(app string, arg string, lock bool) {
 		evlock = "true"
 	}
 	msg := map[string]string{
-		"call-command" : "execute",
-		"execute-app-name" : app,
-		"execute-app-arg" : arg,
-		"event-lock" : evlock,
-
+		"call-command":     "execute",
+		"execute-app-name": app,
+		"execute-app-arg":  arg,
+		"event-lock":       evlock,
 	}
 
 	call.sendMSG(msg)
 }
 
-func (call *Call) SetVar(name string, value string){
+func (call *Call) SetVar(name string, value string) {
 
 	msg := map[string]string{
-		"call-command" : "set",
-		"execute-app-name" : fmt.Sprintf("%s=%s", name, value),
-		"event-lock" : "true",
-
+		"call-command":     "set",
+		"execute-app-name": fmt.Sprintf("%s=%s", name, value),
+		"event-lock":       "true",
 	}
-	
+
 	call.sendMSG(msg)
 	call.Reply()
 }
 
 func (call *Call) sendMSG(data map[string]string) {
 	msg := bytes.NewBufferString("sendmsg\n")
-	for k,v := range data {
+	for k, v := range data {
 		msg.WriteString(fmt.Sprintf("%s: %s\n", k, v))
 	}
 	msg.WriteString("\n\n")
@@ -146,14 +142,14 @@ func (call *Call) sendMSG(data map[string]string) {
 //Reproduce audio
 //http://wiki.freeswitch.org/wiki/Misc._Dialplan_Tools_playback
 func (call *Call) Playback(url string) {
-	call.SetVar("playback_delimiter","!")
+	call.SetVar("playback_delimiter", "!")
 	call.Execute("playback", url, false)
 }
 
 //Contesta
 //http://wiki.freeswitch.org/wiki/Misc._Dialplan_Tools_answer
 func (call *Call) Answer() {
-	call.Execute("answer","", true)
+	call.Execute("answer", "", true)
 	call.Reply()
 }
 
@@ -165,10 +161,8 @@ func (call *Call) Hangup() {
 	call.Caller.Close()
 }
 
-
-
 //Cierra llamada debe ser llamada siempre
-func (call *Call) Close(){
+func (call *Call) Close() {
 	call.Conn.Close()
 }
 
@@ -194,9 +188,9 @@ func (call *Call) DoneActionHandle(uuid string) {
 }
 
 //Bloquea gorutina esperando evento CHANNEL_ANSWER
-//retorna el glivo.Event
-func (call *Call) WaitAnswer() interface{} {
-	return <-call.WaitExecute("wait_answer", map[string]string{"Event-Name":"CHANNEL_ANSWER"})
+//retorna el chan glivo.Event
+func (call *Call) WaitAnswer() <-chan interface{} {
+	return call.WaitExecute("wait_answer", map[string]string{"Event-Name": "CHANNEL_ANSWER"})
 }
 
 //Se un evento determinado
@@ -209,9 +203,8 @@ func (call *Call) WaitExecute(action string, filter map[string]string) chan inte
 }
 
 //Espera un evento y se ejecuta el handler una sola vez
-func (call *Call) OnceEventHandle(action string, hl func(chan interface{})HandlerEvent) chan interface{} {
+func (call *Call) OnceEventHandle(action string, hl func(chan interface{}) HandlerEvent) chan interface{} {
 	res := make(chan interface{})
 	call.AddActionHandle(action, hl(res))
 	return res
 }
-

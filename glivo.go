@@ -3,29 +3,28 @@
 //pero la diferencia es que recibe todo el mensaje o IVR
 //y lo ejecuta
 //
-//BUG() Para terminar el servidor se corta la conexion lo mismo que para los clientes, y es debido al 
+//BUG() Para terminar el servidor se corta la conexion lo mismo que para los clientes, y es debido al
 //bloqueo de E/S, como implementar un non-I/O Bloque
 package glivo
 
 import (
-	"net"
-	"net/textproto"
 	"bufio"
-	"strings"
 	"io"
 	"io/ioutil"
-	"strconv"
 	"log"
+	"net"
+	"net/textproto"
+	"strconv"
+	"strings"
 	"sync"
 )
 
 //Una session representa un puerto escuchando peticiones de freeswitch
 type Session struct {
-	listener *net.Listener
-	logger *log.Logger
+	listener  *net.Listener
+	logger    *log.Logger
 	waitCalls sync.WaitGroup
 }
-
 
 func NewSession(srv *net.Listener, logger *log.Logger) *Session {
 	return &Session{listener: srv, logger: logger}
@@ -34,8 +33,8 @@ func NewSession(srv *net.Listener, logger *log.Logger) *Session {
 func (session *Session) Start(handler func(call *Call, userData interface{}), userData interface{}) {
 	defer session.waitCalls.Wait()
 
-	go func(session *Session){
-		
+	go func(session *Session) {
+
 		for {
 
 			conn, err := (*session.listener).Accept()
@@ -46,7 +45,7 @@ func (session *Session) Start(handler func(call *Call, userData interface{}), us
 			conn.Write([]byte("connect\n\n"))
 			buf := bufio.NewReaderSize(conn, 4096)
 			reader := textproto.NewReader(buf)
-	
+
 			header, err := reader.ReadMIMEHeader()
 			if err != nil {
 				session.logger.Printf("Error reading Call Start info: %s", err.Error())
@@ -54,7 +53,6 @@ func (session *Session) Start(handler func(call *Call, userData interface{}), us
 			}
 
 			call := NewCall(&conn, header, session.logger)
-
 
 			replyCh := make(chan CommandStatus, 100) //si +OK es "" de lo contrario se envia cade
 			call.SetReply(&replyCh)
@@ -67,13 +65,14 @@ func (session *Session) Start(handler func(call *Call, userData interface{}), us
 			call.Reply()
 			call.Write([]byte("myevents\n\n"))
 			call.Reply()
+			call.Write([]byte("event plain CUSTOM\n\n"))
+			call.Reply()
 
 			go handler(call, userData)
 
 		}
 
 	}(session)
-	
 
 }
 
@@ -86,23 +85,22 @@ func (session *Session) Stop() {
 
 type CommandStatus string
 
-
 func DispatcherEvents(call *Call) {
 	for ev := range call.queueEvents {
 		eventDispatch(call, ev)
 	}
 }
 
-func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus, waitCall *sync.WaitGroup){
+func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus, waitCall *sync.WaitGroup) {
 	defer call.Conn.Close()
-	defer func(){ close(call.queueEvents) }()
+	defer func() { close(call.queueEvents) }()
 	defer waitCall.Done()
 
 	reader := textproto.NewReader(buf)
 
 	for {
 		notification_body := ""
-		notification,err := reader.ReadMIMEHeader()
+		notification, err := reader.ReadMIMEHeader()
 		if err != nil {
 			call.logger.Println("Failed read: ", err.Error())
 			break
@@ -112,20 +110,19 @@ func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus, waitC
 			lreader := io.LimitReader(buf, int64(content_length))
 			body, err := ioutil.ReadAll(lreader)
 			if err != nil {
-				call.logger.Printf("Failed read body closing: %s" ,err.Error())
+				call.logger.Printf("Failed read body closing: %s", err.Error())
 				break
-			}else{
+			} else {
 				notification_body = string(body)
 			}
-			
-		}
 
+		}
 
 		switch notification.Get("Content-Type") {
 		case "command/reply":
 			if strings.HasPrefix(notification.Get("Reply-Text"), "+OK") {
 				replyCh <- ""
-			}else{
+			} else {
 				replyCh <- CommandStatus(strings.TrimPrefix(notification.Get("Reply-Text"), "-ERR"))
 			}
 		case "text/event-plain":
@@ -137,16 +134,13 @@ func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus, waitC
 		}
 	}
 
-
 }
 
 //Crea el servidor en la interfaz y puerto seleccionado
-func NewFS(laddr string, logger *log.Logger ) (* Session, error) {
+func NewFS(laddr string, logger *log.Logger) (*Session, error) {
 	srv, err := net.Listen("tcp", laddr)
 	if err != nil {
 		return nil, err
 	}
 	return NewSession(&srv, logger), nil
 }
-
-

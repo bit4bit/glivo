@@ -11,15 +11,15 @@
 package glivo
 
 import (
-	"net/textproto"
 	"fmt"
+	"net/textproto"
 	"strings"
 )
 
 //Representa un evento de Freeswitch
 //Las claves estan Camelised
 type Event struct {
-	call *Call
+	call    *Call
 	Content map[string]string
 }
 
@@ -27,18 +27,16 @@ type Event struct {
 //o bien cuando el evento cumpla las condiciones esperadas.
 type HandlerEvent interface {
 	//Delimita el handler a que eventos trabajar
-	//retorna +true+ si es evento esperado
+	//retornar +true+ si es el evento esperado
 	Filter(Event) bool
 
-	//Recibe evento y reacciona a este
+	//Recibe evento y reacciona a este si fue aceptado en el filtro
 	Handle(Event)
-
 }
 
-
-//Crea evento apartir de el MIME leido 
-func EventFromMIME(call *Call, mime textproto.MIMEHeader) Event{
-	return Event{ call, mimeToMap(mime)}
+//Crea evento apartir de el MIME leido
+func EventFromMIME(call *Call, mime textproto.MIMEHeader) Event {
+	return Event{call, mimeToMap(mime)}
 }
 
 func eventDispatch(call *Call, event Event) {
@@ -66,16 +64,13 @@ func eventDispatch(call *Call, event Event) {
 		}
 	}
 
-	
 }
-
-
 
 //Este permite esperar un evento determinado
 //y bloquear la gorutina atraves del chan *wait*
 //@todo como manejar un timeout por demora??
 type WaitEventHandle struct {
-	wait chan interface{}
+	wait   chan interface{}
 	filter map[string]string
 }
 
@@ -84,7 +79,7 @@ func NewWaitEventHandle(wait chan interface{}, filter map[string]string) WaitEve
 }
 
 func (we WaitEventHandle) Filter(ev Event) bool {
-	for fk,fv := range we.filter {
+	for fk, fv := range we.filter {
 		if ev.Content[fk] != fv {
 			return false
 		}
@@ -96,12 +91,11 @@ func (we WaitEventHandle) Handle(ev Event) {
 	we.wait <- ev
 }
 
-
 //Este permite esperar un evento determinado
 //y bloquear la gorutina atraves del chan *wait*
 //@todo como manejar un timeout por demora??
 type WaitAnyEventHandle struct {
-	wait chan interface{}
+	wait   chan interface{}
 	filter []map[string]string
 }
 
@@ -113,13 +107,15 @@ func (we WaitAnyEventHandle) Filter(ev Event) bool {
 	valid_and := true
 	for _, filter := range we.filter {
 		valid_and = true
-		for fk,fv := range filter {
-			if  ev.Content[fk] != fv {
+		for fk, fv := range filter {
+			if ev.Content[fk] != fv {
 				valid_and = false
 				break
 			}
 		}
-		if valid_and { break }
+		if valid_and {
+			break
+		}
 	}
 	return valid_and
 }
@@ -128,13 +124,12 @@ func (we WaitAnyEventHandle) Handle(ev Event) {
 	we.wait <- ev
 }
 
-
 //Recolecta marcacion
 type CollectDTMFEventHandle struct {
 	wait chan string
 
 	//Caracter con que se termina deteccion
-	terminator uint8 
+	terminator uint8
 
 	//los digitos que se esperan recibir
 	validDigits string
@@ -147,7 +142,7 @@ type CollectDTMFEventHandle struct {
 }
 
 func NewCollectDTMFEventHandle(wait chan string, numDigits int, validDigits string, terminator uint8) CollectDTMFEventHandle {
-	return CollectDTMFEventHandle{wait,terminator, validDigits, numDigits, new(string)}
+	return CollectDTMFEventHandle{wait, terminator, validDigits, numDigits, new(string)}
 }
 
 func (cl CollectDTMFEventHandle) Filter(ev Event) bool {
@@ -164,14 +159,14 @@ func (cl CollectDTMFEventHandle) Filter(ev Event) bool {
 }
 
 func (cl CollectDTMFEventHandle) Handle(ev Event) {
-	switch(ev.Content["Dtmf-Digit"]) {
-	case fmt.Sprintf("%c",cl.terminator):
+	switch ev.Content["Dtmf-Digit"] {
+	case fmt.Sprintf("%c", cl.terminator):
 		cl.wait <- *cl.collection
 		*cl.collection = ""
 	default:
 		if strings.ContainsAny(ev.Content["Dtmf-Digit"], cl.validDigits) {
 			*cl.collection += ev.Content["Dtmf-Digit"]
-		}else{
+		} else {
 			*cl.collection = ""
 		}
 	}
