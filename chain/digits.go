@@ -219,7 +219,11 @@ func (digits *ChainDigits) CollectInput() (string, error) {
 		if len(regexp) == 2 {
 			regexp += fmt.Sprintf("%c", c)
 		} else {
-			regexp += fmt.Sprintf("|%c", c)
+			if c >= '0' && c <= '9' {
+				regexp += fmt.Sprintf("|%c", c)
+			} else {
+				regexp += fmt.Sprintf("|\\%c", c)
+			}
 		}
 	}
 	regexp += ")+$"
