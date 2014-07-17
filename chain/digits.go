@@ -2,9 +2,9 @@ package chain
 
 import (
 	"fmt"
-	"strconv"
 	"github.com/bit4bit/glivo"
-//	"os"
+	"strconv"
+	//	"os"
 )
 
 //Permite Concatenar acciones alrededor del GetDigits
@@ -14,35 +14,33 @@ import (
 //chain.SetTimeout(10)
 //chain.Play("mi audio").Play("Then other.wav").Reply() //get response
 type ChainDigits struct {
-	call *glivo.Call
-	timeout uint16
-	digitTimeout uint16
-	finishOnKey uint8
-	numDigits int
-	retries uint8
-	playBeep bool
-	validDigits string
+	call               *glivo.Call
+	timeout            uint16
+	digitTimeout       uint16
+	finishOnKey        uint8
+	numDigits          int
+	retries            uint8
+	playBeep           bool
+	validDigits        string
 	invalidDigitsSound string
 
-
 	commands []CommandChainable
-	result chan glivo.Event
+	result   chan glivo.Event
 }
 
-func NewChainDigits(call *glivo.Call) *ChainDigits{
+func NewChainDigits(call *glivo.Call) *ChainDigits {
 	return &ChainDigits{
-		call: call, 
-		timeout: 5,
-		digitTimeout: 2,
-		finishOnKey:'#',
-		numDigits: 99,
-		retries: 1,
-		playBeep: false,
-		validDigits: "123456789*#",
+		call:               call,
+		timeout:            5,
+		digitTimeout:       2,
+		finishOnKey:        '#',
+		numDigits:          99,
+		retries:            1,
+		playBeep:           false,
+		validDigits:        "123456789*#",
 		invalidDigitsSound: "silence_stream://250",
-		commands: make([]CommandChainable, 50),
-		result: make(chan glivo.Event),
-		
+		commands:           make([]CommandChainable, 50),
+		result:             make(chan glivo.Event),
 	}
 }
 
@@ -52,69 +50,67 @@ type ChainableDigits interface {
 	Wait(seconds int) ChainDigits
 }
 
-func (digits *ChainDigits) SetTimeout(t uint16){
+func (digits *ChainDigits) SetTimeout(t uint16) {
 	digits.timeout = t
 }
 
-func (digits *ChainDigits) SetDigitTimeout(t uint16){
+func (digits *ChainDigits) SetDigitTimeout(t uint16) {
 	digits.digitTimeout = t
 }
 
-
-func (digits *ChainDigits) SetFinishOnKey(k uint8){
+func (digits *ChainDigits) SetFinishOnKey(k uint8) {
 	digits.finishOnKey = k
 }
 
-func (digits *ChainDigits) SetNumDigits(n int){
+func (digits *ChainDigits) SetNumDigits(n int) {
 	digits.numDigits = n
 }
 
-func (digits *ChainDigits) SetRetries(n uint8){
+func (digits *ChainDigits) SetRetries(n uint8) {
 	digits.retries = n
 }
 
-func (digits *ChainDigits) SetPlayBeep(b bool){
+func (digits *ChainDigits) SetPlayBeep(b bool) {
 	digits.playBeep = b
 }
 
-func (digits *ChainDigits) SetInvalidDigitsSound(s string){
+func (digits *ChainDigits) SetInvalidDigitsSound(s string) {
 	digits.invalidDigitsSound = s
 }
 
-func (digits *ChainDigits) SetValidDigits(s string){
+func (digits *ChainDigits) SetValidDigits(s string) {
 	digits.validDigits = s
 }
 
 //Reproduce archivo local al servidor Freeswitch
-func (digits *ChainDigits) Play(file string) *ChainDigits{
+func (digits *ChainDigits) Play(file string) *ChainDigits {
 	digits.commands = append(digits.commands, CommandChainable{"play", file})
 	return digits
 }
 
-func (digits *ChainDigits) Speak(phrase string) *ChainDigits{
+func (digits *ChainDigits) Speak(phrase string) *ChainDigits {
 	digits.commands = append(digits.commands, CommandChainable{"say", phrase})
 	return digits
 }
 
-func (digits *ChainDigits) Wait(seconds int) *ChainDigits{
+func (digits *ChainDigits) Wait(seconds int) *ChainDigits {
 	digits.commands = append(digits.commands, CommandChainable{"wait", strconv.Itoa(seconds)})
 	return digits
 }
 
-
 //Espera que se responda con los digitos indicados
 //y retorna si o no
-func (digits *ChainDigits) Question(question string) (bool, error){
-	defer func(){
+func (digits *ChainDigits) Question(question string) (bool, error) {
+	defer func() {
 		digits.commands = nil
 	}()
 
 	separator := "!"
 
 	outputs := make([]string, 200)
-	
+
 	for _, command := range digits.commands {
-		switch(command.app){
+		switch command.app {
 		case "say":
 			//@todo permitir cambiar Engine y Voz
 			outputs = append(outputs, fmt.Sprintf("say:flite:slt:%s", command.args))
@@ -123,10 +119,10 @@ func (digits *ChainDigits) Question(question string) (bool, error){
 			if err != nil {
 				value = 1
 			}
-			outputs = append(outputs, fmt.Sprintf("file_string://silence_stream://%d", value * 1000))
+			outputs = append(outputs, fmt.Sprintf("file_string://silence_stream://%d", value*1000))
 		case "play":
 			outputs = append(outputs, command.args)
-			
+
 		}
 	}
 
@@ -137,7 +133,7 @@ func (digits *ChainDigits) Question(question string) (bool, error){
 		}
 		if len(sound_file) == 0 {
 			sound_file += output
-		}else{
+		} else {
 			sound_file += separator + output
 		}
 	}
@@ -145,25 +141,24 @@ func (digits *ChainDigits) Question(question string) (bool, error){
 	regexp := "^("
 	regexp += question
 	regexp += ")$"
-	
 
 	cmd := fmt.Sprintf("%d %d %d %d '%c' '%s' %s pagd_input %s %d",
 		len(question),
 		len(question),
 		digits.retries,
-		digits.timeout * 1000,
+		digits.timeout*1000,
 		digits.finishOnKey,
 		sound_file,
 		digits.invalidDigitsSound,
 		regexp,
-		digits.digitTimeout * 1000,
+		digits.digitTimeout*1000,
 	)
 
 	block := make(chan interface{})
 	digits.call.RegisterEventHandle("getdigits_app",
 		glivo.NewWaitEventHandle(block, map[string]string{
-			"Variable_read_result" : "success",
-			"Application" : "play_and_get_digits",
+			"Variable_read_result": "success",
+			"Application":          "play_and_get_digits",
 		}),
 	)
 
@@ -179,20 +174,19 @@ func (digits *ChainDigits) Question(question string) (bool, error){
 	return ev.Content["Variable_pagd_input"] == question, nil
 }
 
-
 //Espera digitos, y colecion al final retonar
 //toda la secuencia digitada
-func (digits *ChainDigits) CollectInput() (string, error){
-	defer func(){
+func (digits *ChainDigits) CollectInput() (string, error) {
+	defer func() {
 		digits.commands = nil
 	}()
 
 	separator := "!"
 
 	outputs := make([]string, 200)
-	
+
 	for _, command := range digits.commands {
-		switch(command.app){
+		switch command.app {
 		case "say":
 			//@todo permitir cambiar el engine y la voz
 			outputs = append(outputs, fmt.Sprintf("say:flite:slt:%s", command.args))
@@ -201,10 +195,10 @@ func (digits *ChainDigits) CollectInput() (string, error){
 			if err != nil {
 				value = 1
 			}
-			outputs = append(outputs, fmt.Sprintf("file_string://silence_stream://%d", strconv.Itoa(value * 1000)))
+			outputs = append(outputs, fmt.Sprintf("file_string://silence_stream://%d", strconv.Itoa(value*1000)))
 		case "play":
 			outputs = append(outputs, command.args)
-			
+
 		}
 	}
 
@@ -215,7 +209,7 @@ func (digits *ChainDigits) CollectInput() (string, error){
 		}
 		if len(sound_file) == 0 {
 			sound_file += output
-		}else{
+		} else {
 			sound_file += separator + output
 		}
 	}
@@ -224,28 +218,27 @@ func (digits *ChainDigits) CollectInput() (string, error){
 	for _, c := range digits.validDigits {
 		if len(regexp) == 2 {
 			regexp += fmt.Sprintf("%c", c)
-		}else{
+		} else {
 			regexp += fmt.Sprintf("|%c", c)
 		}
 	}
 	regexp += ")+$"
-	
 
 	cmd := fmt.Sprintf("%d %d %d %d '%c' '%s' %s pagd_input %s %d",
 		1,
 		digits.numDigits,
 		digits.retries,
-		digits.timeout * 1000,
+		digits.timeout*1000,
 		digits.finishOnKey,
 		sound_file,
 		digits.invalidDigitsSound,
 		regexp,
-		digits.digitTimeout * 1000,
+		digits.digitTimeout*1000,
 	)
 
 	block := make(chan string)
-	cldtmf := glivo.NewCollectDTMFEventHandle(block, digits.numDigits, digits.validDigits, '#')
-	digits.call.RegisterEventHandle("collect_input", cldtmf)
+	cldtmf := glivo.NewCollectDTMFEventHandle(block, digits.numDigits, digits.validDigits, digits.finishOnKey)
+	uuid := digits.call.RegisterEventHandleUUID(cldtmf)
 
 	digits.call.SetVar("playback_delimiter", "!")
 	digits.call.SetVar("playback_terminators", "none")
@@ -255,26 +248,23 @@ func (digits *ChainDigits) CollectInput() (string, error){
 	digits.commands = nil
 
 	collection := <-block
-	digits.call.UnregisterEventHandle("collect_input")
-	return collection,nil
+	digits.call.UnregisterEventHandle(uuid)
+	return collection, nil
 }
-
-
-
 
 //Espera digitos, y colecion al final retonar
 //toda la secuencia digitada
 func (digits *ChainDigits) Do() {
-	defer func(){
+	defer func() {
 		digits.commands = nil
 	}()
 
 	separator := "!"
 
 	outputs := make([]string, 200)
-	
+
 	for _, command := range digits.commands {
-		switch(command.app){
+		switch command.app {
 		case "say":
 			//@todo permitir cambiar el engine y la voz
 			outputs = append(outputs, fmt.Sprintf("say:flite:slt:%s", command.args))
@@ -283,10 +273,10 @@ func (digits *ChainDigits) Do() {
 			if err != nil {
 				value = 1
 			}
-			outputs = append(outputs, fmt.Sprintf("file_string://silence_stream://%d", strconv.Itoa(value * 1000)))
+			outputs = append(outputs, fmt.Sprintf("file_string://silence_stream://%d", strconv.Itoa(value*1000)))
 		case "play":
 			outputs = append(outputs, command.args)
-			
+
 		}
 	}
 
@@ -297,7 +287,7 @@ func (digits *ChainDigits) Do() {
 		}
 		if len(sound_file) == 0 {
 			sound_file += output
-		}else{
+		} else {
 			sound_file += separator + output
 		}
 	}
@@ -306,6 +296,3 @@ func (digits *ChainDigits) Do() {
 	digits.call.Execute("playback", sound_file, true)
 	digits.call.Reply()
 }
-
-
-

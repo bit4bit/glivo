@@ -7,6 +7,7 @@ package glivo
 
 import (
 	"bytes"
+	guuid "code.google.com/p/go-uuid/uuid"
 	"fmt"
 	"log"
 	"net"
@@ -169,6 +170,12 @@ func (call *Call) Close() {
 //Registra observador a un evento
 func (call *Call) RegisterEventHandle(uuid string, hl HandlerEvent) {
 	call.handlers[uuid] = hl
+}
+
+func (call *Call) RegisterEventHandleUUID(hl HandlerEvent) string {
+	uuid := guuid.New()
+	call.handlers[uuid] = hl
+	return uuid
 }
 
 func (call *Call) UnregisterEventHandle(uuid string) {
