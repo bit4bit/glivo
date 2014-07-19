@@ -40,7 +40,7 @@ func EventFromMIME(call *Call, mime textproto.MIMEHeader) Event {
 }
 
 func eventDispatch(call *Call, event Event) {
-
+	fmt.Print("===EVENT", event.Content)
 	if event.Content["Unique-Id"] != call.uuid {
 		return
 	}

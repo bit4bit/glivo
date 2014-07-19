@@ -137,7 +137,7 @@ func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus, waitC
 }
 
 //Crea el servidor en la interfaz y puerto seleccionado
-func NewFS(laddr string, logger *log.Logger) (*Session, error) {
+func Listen(laddr string, logger *log.Logger) (*Session, error) {
 	srv, err := net.Listen("tcp", laddr)
 	if err != nil {
 		return nil, err

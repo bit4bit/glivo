@@ -155,7 +155,7 @@ func (digits *ChainDigits) Question(question string) (bool, error) {
 	)
 
 	block := make(chan interface{})
-	digits.call.RegisterEventHandle("getdigits_app",
+	getdigitsId := digits.call.RegisterEventHandle(
 		glivo.NewWaitEventHandle(block, map[string]string{
 			"Variable_read_result": "success",
 			"Application":          "play_and_get_digits",
@@ -170,7 +170,7 @@ func (digits *ChainDigits) Question(question string) (bool, error) {
 	digits.commands = nil
 
 	ev := (<-block).(glivo.Event)
-	digits.call.UnregisterEventHandle("getdigits_app")
+	digits.call.UnregisterEventHandle(getdigitsId)
 	return ev.Content["Variable_pagd_input"] == question, nil
 }
 
@@ -242,7 +242,7 @@ func (digits *ChainDigits) CollectInput() (string, error) {
 
 	block := make(chan string)
 	cldtmf := glivo.NewCollectDTMFEventHandle(block, digits.numDigits, digits.validDigits, digits.finishOnKey)
-	uuid := digits.call.RegisterEventHandleUUID(cldtmf)
+	cldtmfIdx := digits.call.RegisterEventHandle(cldtmf)
 
 	digits.call.SetVar("playback_delimiter", "!")
 	digits.call.SetVar("playback_terminators", "none")
@@ -252,7 +252,7 @@ func (digits *ChainDigits) CollectInput() (string, error) {
 	digits.commands = nil
 
 	collection := <-block
-	digits.call.UnregisterEventHandle(uuid)
+	digits.call.UnregisterEventHandle(cldtmfIdx)
 	return collection, nil
 }
 

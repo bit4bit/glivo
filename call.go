@@ -7,14 +7,13 @@ package glivo
 
 import (
 	"bytes"
-	guuid "code.google.com/p/go-uuid/uuid"
 	"fmt"
 	"log"
 	"net"
 	"net/textproto"
 	"net/url"
 	"strings"
-	"sync"
+	"time"
 )
 
 type Channel struct {
@@ -36,11 +35,13 @@ type Call struct {
 	Caller    *Channel
 	replyChan *chan CommandStatus
 
-	handlers map[string]HandlerEvent
+	handlers           []HandlerEvent
+	handlersIdx        int64
+	handlersDestroyIdx int64
+
 	//Al registrar se elimina despues de
 	//de haber encontrado el evento esperado
-	handlerOnce    map[string]HandlerEvent
-	muxHandlerOnce *sync.Mutex
+	handlerOnce []HandlerEvent
 
 	//Se encolan los eventos
 	//para ser procesados por *eventDispatch*
@@ -57,17 +58,18 @@ const CALL_MAX_QUEUE_EVENTS = 77
 func NewCall(conn *net.Conn, header textproto.MIMEHeader, logger *log.Logger) *Call {
 
 	call := &Call{
-		Conn:           *conn,
-		uuid:           "",
-		Header:         make(map[string]string),
-		Variable:       make(map[string]string),
-		Caller:         &Channel{"", make(map[string]string)},
-		replyChan:      nil,
-		handlers:       make(map[string]HandlerEvent),
-		handlerOnce:    make(map[string]HandlerEvent),
-		muxHandlerOnce: &sync.Mutex{},
-		queueEvents:    make(chan Event, CALL_MAX_QUEUE_EVENTS),
-		logger:         logger,
+		Conn:               *conn,
+		uuid:               "",
+		Header:             make(map[string]string),
+		Variable:           make(map[string]string),
+		Caller:             &Channel{"", make(map[string]string)},
+		replyChan:          nil,
+		handlers:           make([]HandlerEvent, 0),
+		handlersIdx:        0,
+		handlersDestroyIdx: 0,
+		handlerOnce:        make([]HandlerEvent, 0),
+		queueEvents:        make(chan Event, CALL_MAX_QUEUE_EVENTS),
+		logger:             logger,
 	}
 
 	for k, v := range header {
@@ -93,6 +95,10 @@ func (call *Call) SetReply(rc *chan CommandStatus) {
 	call.replyChan = rc
 }
 
+func (call *Call) ReplyChan() chan CommandStatus {
+	return *call.replyChan
+}
+
 //Espera el reply del comando ejecutado
 func (call *Call) Reply() CommandStatus {
 	return <-*call.replyChan
@@ -103,6 +109,7 @@ func (call *Call) Write(p []byte) (int, error) {
 	return call.Conn.Write(p)
 }
 
+//Executa app
 func (call *Call) Execute(app string, arg string, lock bool) {
 	evlock := "false"
 	if lock {
@@ -133,7 +140,10 @@ func (call *Call) SetVar(name string, value string) {
 func (call *Call) sendMSG(data map[string]string) {
 	msg := bytes.NewBufferString("sendmsg\n")
 	for k, v := range data {
-		msg.WriteString(fmt.Sprintf("%s: %s\n", k, v))
+		msg.WriteString(k)
+		msg.WriteString(": ")
+		msg.WriteString(v)
+		msg.WriteString("\n")
 	}
 	msg.WriteString("\n\n")
 	call.logger.Println("====BEGIN SendMSG\n", msg.String(), "====END SendMSG\n")
@@ -154,12 +164,23 @@ func (call *Call) Answer() {
 	call.Reply()
 }
 
-//Cuelga la llamada
+//Cuelga la llamada, al recibir evento CHANNEL_EXECUTE_COMPLETE de hangup
+//o bien respuesta del comando
 //http://wiki.freeswitch.org/wiki/Misc._Dialplan_Tools_hangup
 func (call *Call) Hangup() {
+
 	call.Execute("hangup", "", true)
-	call.Reply()
-	call.Caller.Close()
+	select {
+	case <-call.ReplyChan():
+		call.Caller.Close()
+		call.Close()
+	case <-call.WaitEventChan(map[string]string{"Event-Name": "CHANNEL_EXECUTE_COMPLETE", "Variable_current_application": "hangup"}):
+		call.Caller.Close()
+		call.Close()
+	case <-time.After(time.Minute * 5):
+		call.Caller.Close()
+		call.Close()
+	}
 }
 
 //Cierra llamada debe ser llamada siempre
@@ -168,50 +189,49 @@ func (call *Call) Close() {
 }
 
 //Registra observador a un evento
-func (call *Call) RegisterEventHandle(uuid string, hl HandlerEvent) {
-	call.handlers[uuid] = hl
+func (call *Call) RegisterEventHandle(hl HandlerEvent) int64 {
+	call.handlersIdx += 1
+	call.handlers = append(call.handlers, hl)
+	return call.handlersIdx
 }
 
-func (call *Call) RegisterEventHandleUUID(hl HandlerEvent) string {
-	uuid := guuid.New()
-	call.handlers[uuid] = hl
-	return uuid
+func (call *Call) UnregisterEventHandle(idx int64) {
+	//https://code.google.com/p/go-wiki/wiki/SliceTricks
+	call.handlersDestroyIdx += 1
+	idx -= call.handlersDestroyIdx
+	copy(call.handlers[idx:], call.handlers[idx+1:])
+	call.handlers[len(call.handlers)-1] = nil
+	call.handlers = call.handlers[:len(call.handlers)-1]
 }
 
-func (call *Call) UnregisterEventHandle(uuid string) {
-	delete(call.handlers, uuid)
+func (call *Call) AddActionHandle(hl HandlerEvent) {
+	call.handlerOnce = append(call.handlerOnce, hl)
 }
 
-func (call *Call) AddActionHandle(uuid string, hl HandlerEvent) {
-	call.muxHandlerOnce.Lock()
-	defer call.muxHandlerOnce.Unlock()
-	call.handlerOnce[uuid] = hl
-}
-
-func (call *Call) DoneActionHandle(uuid string) {
-	call.muxHandlerOnce.Lock()
-	defer call.muxHandlerOnce.Unlock()
-	delete(call.handlerOnce, uuid)
+func (call *Call) DoneActionHandle(idx int) {
+	//https://code.google.com/p/go-wiki/wiki/SliceTricks
+	copy(call.handlerOnce[idx:], call.handlerOnce[idx+1:])
+	call.handlerOnce[len(call.handlerOnce)-1] = nil
+	call.handlerOnce = call.handlerOnce[:len(call.handlerOnce)-1]
 }
 
 //Bloquea gorutina esperando evento CHANNEL_ANSWER
 //retorna el chan glivo.Event
 func (call *Call) WaitAnswer() <-chan interface{} {
-	return call.WaitExecute("wait_answer", map[string]string{"Event-Name": "CHANNEL_ANSWER"})
+	return call.WaitEventChan(map[string]string{"Event-Name": "CHANNEL_ANSWER"})
 }
 
-//Se un evento determinado
-func (call *Call) WaitExecute(action string, filter map[string]string) chan interface{} {
-
+//Se espera un evento determinado
+func (call *Call) WaitEventChan(filter map[string]string) chan interface{} {
 	wait := make(chan interface{})
 	waitEvent := NewWaitEventHandle(wait, filter)
-	call.AddActionHandle(action, waitEvent)
+	call.AddActionHandle(waitEvent)
 	return wait
 }
 
 //Espera un evento y se ejecuta el handler una sola vez
-func (call *Call) OnceEventHandle(action string, hl func(chan interface{}) HandlerEvent) chan interface{} {
+func (call *Call) OnceEventHandle(hl func(chan interface{}) HandlerEvent) chan interface{} {
 	res := make(chan interface{})
-	call.AddActionHandle(action, hl(res))
+	call.AddActionHandle(hl(res))
 	return res
 }
