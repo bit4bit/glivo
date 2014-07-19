@@ -1,8 +1,8 @@
 package dptools
 
 import (
-	"github.com/bit4bit/glivo"
 	"bytes"
+	"github.com/bit4bit/glivo"
 )
 
 //Execute Bridge and returns the events hangup for the ALeg and BLeg of the call
@@ -11,8 +11,7 @@ func (dptools *DPTools) Bridge(endpoint string) *glivo.Event {
 
 	send.WriteString(endpoint)
 
-
-	wait_action := dptools.call.OnceEventHandle("bridge_action", func(res chan interface{}) glivo.HandlerEvent {
+	wait_action := dptools.call.OnceEventHandle(func(res chan interface{}) glivo.HandlerEvent {
 		return glivo.NewWaitAnyEventHandle(res,
 			[]map[string]string{
 				{"Event-Name": "CHANNEL_UNBRIDGE"},
@@ -20,10 +19,10 @@ func (dptools *DPTools) Bridge(endpoint string) *glivo.Event {
 			})
 	})
 
-        wait_complete := dptools.call.WaitExecute("bridge", map[string]string{
-                "Event-Name": "CHANNEL_EXECUTE_COMPLETE",
-                "Application": "bridge",
-        })
+	wait_complete := dptools.call.WaitEventChan(map[string]string{
+		"Event-Name":  "CHANNEL_EXECUTE_COMPLETE",
+		"Application": "bridge",
+	})
 
 	dptools.call.Execute("bridge", send.String(), true)
 
