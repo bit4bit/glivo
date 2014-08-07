@@ -28,7 +28,7 @@ func (session *Channel) Close() {
 //La llamada que se controla actualmente
 type Call struct {
 	Conn     net.Conn
-	uuid     string
+	UUID     string
 	Header   map[string]string
 	Variable map[string]string
 
@@ -48,6 +48,8 @@ type Call struct {
 	queueEvents chan Event
 
 	logger *log.Logger
+
+	Closed bool
 }
 
 //Cantidad maxima antes de bloquear la gorutina
@@ -59,7 +61,7 @@ func NewCall(conn *net.Conn, header textproto.MIMEHeader, logger *log.Logger) *C
 
 	call := &Call{
 		Conn:               *conn,
-		uuid:               "",
+		UUID:               "",
 		Header:             make(map[string]string),
 		Variable:           make(map[string]string),
 		Caller:             &Channel{"", make(map[string]string)},
@@ -70,6 +72,7 @@ func NewCall(conn *net.Conn, header textproto.MIMEHeader, logger *log.Logger) *C
 		handlerOnce:        make([]HandlerEvent, 0),
 		queueEvents:        make(chan Event, CALL_MAX_QUEUE_EVENTS),
 		logger:             logger,
+		Closed:             false,
 	}
 
 	for k, v := range header {
@@ -86,7 +89,7 @@ func NewCall(conn *net.Conn, header textproto.MIMEHeader, logger *log.Logger) *C
 			call.Header[k] = val
 		}
 	}
-	call.uuid = header.Get("Unique-ID")
+	call.UUID = header.Get("Unique-ID")
 
 	return call
 }
@@ -186,6 +189,7 @@ func (call *Call) Hangup() {
 //Cierra llamada debe ser llamada siempre
 func (call *Call) Close() {
 	call.Conn.Close()
+	call.Closed = true
 }
 
 //Registra observador a un evento
