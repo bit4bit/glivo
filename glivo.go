@@ -3,8 +3,6 @@
 //pero la diferencia es que recibe todo el mensaje o IVR
 //y lo ejecuta
 //
-//BUG() Para terminar el servidor se corta la conexion lo mismo que para los clientes, y es debido al
-//bloqueo de E/S, como implementar un non-I/O Bloque
 package glivo
 
 import (
@@ -19,47 +17,44 @@ import (
 	"sync"
 )
 
+//HandlerCall active call
+type HandlerCall func(call *Call, userData interface{})
+
 //Una session representa un puerto escuchando peticiones de freeswitch
-type Session struct {
+type server struct {
 	listener  *net.Listener
 	logger    *log.Logger
 	waitCalls sync.WaitGroup
 }
 
-func NewSession(srv *net.Listener, logger *log.Logger) *Session {
-	return &Session{listener: srv, logger: logger}
-}
-
-func (session *Session) Start(handler func(call *Call, userData interface{}), userData interface{}) {
+func (session *server) Serve(handler HandlerCall, userData interface{}) error {
 	defer session.waitCalls.Wait()
 
-	go func(session *Session) {
+	for {
+		conn, err := (*session.listener).Accept()
+		if err != nil {
+			continue
+		}
 
-		for {
+		conn.Write([]byte("connect\n\n"))
 
-			conn, err := (*session.listener).Accept()
-			if err != nil {
-				continue
-			}
+		buf := bufio.NewReaderSize(conn, 4096)
+		reader := textproto.NewReader(buf)
 
-			conn.Write([]byte("connect\n\n"))
-			buf := bufio.NewReaderSize(conn, 4096)
-			reader := textproto.NewReader(buf)
+		header, err := reader.ReadMIMEHeader()
+		if err != nil {
+			session.logger.Printf("Error reading Call Start info: %s", err.Error())
+			continue
+		}
 
-			header, err := reader.ReadMIMEHeader()
-			if err != nil {
-				session.logger.Printf("Error reading Call Start info: %s", err.Error())
-				continue
-			}
+		stopCall := make(chan bool)
+		replyCh := make(chan CommandStatus, 100) //si +OK es "" de lo contrario se envia cade
+		call := NewCall(&conn, header, replyCh, session.logger)
+		session.waitCalls.Add(1)
+		go HandleCall(call, buf, replyCh, stopCall)
+		go DispatcherEvents(call)
 
-			call := NewCall(&conn, header, session.logger)
-
-			replyCh := make(chan CommandStatus, 100) //si +OK es "" de lo contrario se envia cade
-			call.SetReply(&replyCh)
-			session.waitCalls.Add(1)
-			go HandleCall(call, buf, replyCh, &session.waitCalls)
-			go DispatcherEvents(call)
-
+		go func() {
 			//preludio
 			call.Write([]byte("linger\n\n"))
 			call.Reply()
@@ -68,17 +63,19 @@ func (session *Session) Start(handler func(call *Call, userData interface{}), us
 			call.Write([]byte("event plain CUSTOM\n\n"))
 			call.Reply()
 
-			go handler(call, userData)
-
-		}
-
-	}(session)
+			handler(call, userData)
+			session.waitCalls.Done()
+			call.Close()
+			close(call.queueEvents)
+			stopCall <- true
+		}()
+	}
 
 }
 
 //Termina el servidor y bloquea hasta
 //que se terminen todas las llamadas
-func (session *Session) Stop() {
+func (session *server) Stop() {
 	session.waitCalls.Wait()
 	(*session.listener).Close()
 }
@@ -91,56 +88,80 @@ func DispatcherEvents(call *Call) {
 	}
 }
 
-func HandleCall(call *Call, buf *bufio.Reader, replyCh chan CommandStatus, waitCall *sync.WaitGroup) {
-	defer call.Conn.Close()
-	defer func() { close(call.queueEvents) }()
-	defer waitCall.Done()
-
+func HandleCall(call *Call, buf *bufio.Reader,
+	replyCh chan CommandStatus, stopedCall chan bool) {
+	chnotification := make(chan textproto.MIMEHeader)
+	cherror := make(chan error)
 	reader := textproto.NewReader(buf)
-
-	for {
-		notification_body := ""
-		notification, err := reader.ReadMIMEHeader()
-		if err != nil {
-			call.logger.Println("Failed read: ", err.Error())
-			break
-		}
-		if Scontent_length := notification.Get("Content-Length"); Scontent_length != "" {
-			content_length, _ := strconv.Atoi(Scontent_length)
-			lreader := io.LimitReader(buf, int64(content_length))
-			body, err := ioutil.ReadAll(lreader)
+	go func() {
+		for {
+			notification, err := reader.ReadMIMEHeader()
 			if err != nil {
-				call.logger.Printf("Failed read body closing: %s", err.Error())
+				cherror <- err
 				break
-			} else {
-				notification_body = string(body)
 			}
-
+			chnotification <- notification
 		}
+	}()
 
-		switch notification.Get("Content-Type") {
-		case "command/reply":
-			if strings.HasPrefix(notification.Get("Reply-Text"), "+OK") {
-				replyCh <- ""
-			} else {
-				replyCh <- CommandStatus(strings.TrimPrefix(notification.Get("Reply-Text"), "-ERR"))
+loop:
+	for {
+		select {
+		case <-stopedCall:
+			break loop
+
+		case <-cherror:
+			break loop
+
+		case notification := <-chnotification:
+			notification_body := ""
+			if Scontent_length := notification.Get("Content-Length"); Scontent_length != "" {
+				content_length, _ := strconv.Atoi(Scontent_length)
+				lreader := io.LimitReader(buf, int64(content_length))
+				body, err := ioutil.ReadAll(lreader)
+				if err != nil {
+					call.logger.Printf("Failed read body closing: %s", err.Error())
+					break
+				} else {
+					notification_body = string(body)
+				}
 			}
-		case "text/event-plain":
-			buf := bufio.NewReader(strings.NewReader(notification_body))
-			reader := textproto.NewReader(buf)
-			mime_body, _ := reader.ReadMIMEHeader()
-			event := EventFromMIME(call, mime_body)
-			call.queueEvents <- event
+
+			switch notification.Get("Content-Type") {
+			case "command/reply":
+				if strings.HasPrefix(notification.Get("Reply-Text"), "+OK") {
+					replyCh <- ""
+				} else {
+					replyCh <- CommandStatus(strings.TrimPrefix(notification.Get("Reply-Text"), "-ERR"))
+				}
+			case "text/event-plain":
+				buf := bufio.NewReader(strings.NewReader(notification_body))
+				reader := textproto.NewReader(buf)
+				mime_body, _ := reader.ReadMIMEHeader()
+				event := EventFromMIME(call, mime_body)
+				call.queueEvents <- event
+			}
 		}
 	}
 
 }
 
 //Crea el servidor en la interfaz y puerto seleccionado
-func Listen(laddr string, logger *log.Logger) (*Session, error) {
+func Listen(laddr string, logger *log.Logger) (*server, error) {
 	srv, err := net.Listen("tcp", laddr)
 	if err != nil {
 		return nil, err
 	}
-	return NewSession(&srv, logger), nil
+	return &server{&srv, logger, sync.WaitGroup{}}, nil
+}
+
+func ListenAndserve(laddr string, logger *log.Logger, handler HandlerCall,
+	userData interface{}) error {
+	session, err := Listen(laddr, logger)
+	if err != nil {
+		return err
+	}
+
+	session.Serve(handler, userData)
+	return nil
 }

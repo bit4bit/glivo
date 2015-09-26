@@ -26,14 +26,23 @@ func (session *Channel) Close() {
 }
 
 //La llamada que se controla actualmente
+//Para mas procedimientos mirar chan/ y dptools/
 type Call struct {
-	Conn     net.Conn
-	UUID     string
-	Header   map[string]string
+	Conn net.Conn
+
+	//UUID de la llamada
+	UUID string
+
+	//Header cabezera
+	Header map[string]string
+
+	//Variable variables en la llamada
 	Variable map[string]string
 
-	Caller    *Channel
-	replyChan *chan CommandStatus
+	//Caller quien llama
+	Caller *Channel
+
+	replyChan chan CommandStatus
 
 	handlers           []HandlerEvent
 	handlersIdx        int64
@@ -49,6 +58,7 @@ type Call struct {
 
 	logger *log.Logger
 
+	//Closed cuando la llamada a sido finalizada
 	Closed bool
 }
 
@@ -57,7 +67,9 @@ type Call struct {
 //la QUEUE
 const CALL_MAX_QUEUE_EVENTS = 77
 
-func NewCall(conn *net.Conn, header textproto.MIMEHeader, logger *log.Logger) *Call {
+//NewCall crea nueva llamada en conexion
+func NewCall(conn *net.Conn, header textproto.MIMEHeader,
+	replyChan chan CommandStatus, logger *log.Logger) *Call {
 
 	call := &Call{
 		Conn:               *conn,
@@ -65,7 +77,7 @@ func NewCall(conn *net.Conn, header textproto.MIMEHeader, logger *log.Logger) *C
 		Header:             make(map[string]string),
 		Variable:           make(map[string]string),
 		Caller:             &Channel{"", make(map[string]string)},
-		replyChan:          nil,
+		replyChan:          replyChan,
 		handlers:           make([]HandlerEvent, 0),
 		handlersIdx:        0,
 		handlersDestroyIdx: 0,
@@ -94,20 +106,16 @@ func NewCall(conn *net.Conn, header textproto.MIMEHeader, logger *log.Logger) *C
 	return call
 }
 
-func (call *Call) SetReply(rc *chan CommandStatus) {
-	call.replyChan = rc
-}
-
 func (call *Call) ReplyChan() chan CommandStatus {
-	return *call.replyChan
+	return call.replyChan
 }
 
 //Espera el reply del comando ejecutado
 func (call *Call) Reply() CommandStatus {
-	return <-*call.replyChan
+	return <-call.replyChan
 }
 
-//Envia al socket
+//Write permite escribir directamente
 func (call *Call) Write(p []byte) (int, error) {
 	return call.Conn.Write(p)
 }
@@ -150,7 +158,7 @@ func (call *Call) sendMSG(data map[string]string) {
 	}
 	msg.WriteString("\n\n")
 	call.logger.Println("====BEGIN SendMSG\n", msg.String(), "====END SendMSG\n")
-	call.Write([]byte(msg.String()))
+	msg.WriteTo(call)
 }
 
 //Reproduce audio

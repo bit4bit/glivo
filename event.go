@@ -68,7 +68,7 @@ func eventDispatch(call *Call, event Event) {
 
 //Este permite esperar un evento determinado
 //y bloquear la gorutina atraves del chan *wait*
-//@todo como manejar un timeout por demora??
+//TODO como manejar un timeout por demora??
 type WaitEventHandle struct {
 	wait   chan interface{}
 	filter map[string]string
